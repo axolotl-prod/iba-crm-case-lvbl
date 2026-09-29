@@ -14,16 +14,266 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      employees: {
+        Row: {
+          active: boolean
+          bonus_rate: number
+          coef_min: number
+          coef_target: number
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+          salary: number
+          user_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          bonus_rate?: number
+          coef_min?: number
+          coef_target?: number
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          role?: Database["public"]["Enums"]["app_role"]
+          salary?: number
+          user_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          bonus_rate?: number
+          coef_min?: number
+          coef_target?: number
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          salary?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          amount: number | null
+          comment: string | null
+          created_at: string
+          id: string
+          income: string | null
+          lead_date: string | null
+          manager_id: string | null
+          name: string
+          net: number | null
+          next_action: string | null
+          payment_date: string | null
+          payment_method: string | null
+          phone: string | null
+          raw_status: string | null
+          request: string | null
+          source: string | null
+          status: Database["public"]["Enums"]["lead_status"]
+          tariff: string | null
+          telegram: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          comment?: string | null
+          created_at?: string
+          id?: string
+          income?: string | null
+          lead_date?: string | null
+          manager_id?: string | null
+          name?: string
+          net?: number | null
+          next_action?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          phone?: string | null
+          raw_status?: string | null
+          request?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          tariff?: string | null
+          telegram?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          comment?: string | null
+          created_at?: string
+          id?: string
+          income?: string | null
+          lead_date?: string | null
+          manager_id?: string | null
+          name?: string
+          net?: number | null
+          next_action?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          phone?: string | null
+          raw_status?: string | null
+          request?: string | null
+          source?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          tariff?: string | null
+          telegram?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          client_name: string
+          contact: string | null
+          created_at: string
+          id: string
+          lead_id: string | null
+          manager_id: string | null
+          net_profit: number
+          order_no: number | null
+          payment_date: string
+          payment_method: string | null
+          receivable: number
+          revenue: number
+          schedule: string | null
+          tariff: string | null
+        }
+        Insert: {
+          client_name: string
+          contact?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          manager_id?: string | null
+          net_profit?: number
+          order_no?: number | null
+          payment_date?: string
+          payment_method?: string | null
+          receivable?: number
+          revenue?: number
+          schedule?: string | null
+          tariff?: string | null
+        }
+        Update: {
+          client_name?: string
+          contact?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          manager_id?: string | null
+          net_profit?: number
+          order_no?: number | null
+          payment_date?: string
+          payment_method?: string | null
+          receivable?: number
+          revenue?: number
+          schedule?: string | null
+          tariff?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          created_at: string
+          employee_id: string | null
+          id: string
+          period: string
+          plan_max: number
+          plan_min: number
+          plan_target: number
+        }
+        Insert: {
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          period: string
+          plan_max?: number
+          plan_min?: number
+          plan_target?: number
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string | null
+          id?: string
+          period?: string
+          plan_max?: number
+          plan_min?: number
+          plan_target?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plans_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_employee_id: { Args: never; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: { Args: never; Returns: boolean }
+      link_current_user: { Args: never; Returns: string }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "manager"
+      lead_status: "new" | "in_work" | "kp_sent" | "paid" | "lost"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +400,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "manager"],
+      lead_status: ["new", "in_work", "kp_sent", "paid", "lost"],
+    },
   },
 } as const
