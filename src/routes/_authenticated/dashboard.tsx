@@ -231,6 +231,7 @@ function DashboardPage() {
       <div className="mt-4 panel p-5">
         <h2 className="text-sm font-semibold">План компании на {monthLabel(period)}</h2>
         <PlanForm
+          key={companyPlan?.id ?? `company-${period}`}
           plan={companyPlan}
           onSave={(v) => savePlan.mutate({ employee_id: null, ...v })}
         />
@@ -283,7 +284,11 @@ function DashboardPage() {
                   К выплате: <span className="text-primary">{money(bonus.payout)}</span>
                 </span>
               </div>
-              <PlanForm plan={plan} onSave={(v) => savePlan.mutate({ employee_id: emp.id, ...v })} />
+              <PlanForm
+                key={plan?.id ?? `${emp.id}-${period}`}
+                plan={plan}
+                onSave={(v) => savePlan.mutate({ employee_id: emp.id, ...v })}
+              />
             </div>
           );
         })}
