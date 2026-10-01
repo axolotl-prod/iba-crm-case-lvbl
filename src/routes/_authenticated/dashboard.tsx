@@ -45,7 +45,23 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const { data: me } = useMe();
   const qc = useQueryClient();
-  const [period, setPeriod] = useState(monthStart());
+  const [period, setPeriod] = useState<string | null>(null);
+
+  const { data: lastPaymentMonth } = useQuery({
+    queryKey: ["last-payment-month"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("payments")
+        .select("payment_date")
+        .order("payment_date", { ascending: false })
+        .limit(1);
+      const latest = data?.[0]?.payment_date;
+      return latest ? `${latest.slice(0, 7)}-01` : monthStart();
+    },
+  });
+
+  const activePeriod = period ?? lastPaymentMonth ?? monthStart();
+
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
