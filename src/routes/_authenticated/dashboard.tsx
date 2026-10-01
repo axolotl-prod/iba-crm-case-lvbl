@@ -60,7 +60,7 @@ function DashboardPage() {
     },
   });
 
-  const activePeriod = period ?? lastPaymentMonth ?? monthStart();
+  const period = periodOverride ?? lastPaymentMonth ?? monthStart();
 
 
   const { data: employees = [] } = useQuery({
