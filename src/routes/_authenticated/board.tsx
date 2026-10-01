@@ -131,6 +131,7 @@ function BoardPage() {
 
   return (
     <AppShell
+      fitViewport
       title="Канбан заявок"
       subtitle={
         isLoading
@@ -196,7 +197,7 @@ function BoardPage() {
         </Dialog>
       }
     >
-      <div className="grid gap-4 xl:grid-cols-5 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:h-full lg:min-h-0 lg:grid-cols-5">
         {STATUS_COLUMNS.map((col) => {
           const items = leads.filter((l) => l.status === col.key);
           const sum = items.reduce((acc, l) => acc + Number(l.amount ?? 0), 0);
@@ -213,7 +214,7 @@ function BoardPage() {
                 if (dragging) move.mutate({ id: dragging, status: col.key });
                 setDragging(null);
               }}
-              className={`panel flex min-h-[320px] flex-col p-3 transition-colors ${
+              className={`panel flex min-h-[320px] flex-col p-3 transition-colors lg:min-h-0 lg:overflow-hidden ${
                 over === col.key ? "border-primary bg-surface-2" : ""
               }`}
             >
@@ -228,7 +229,7 @@ function BoardPage() {
                   {sum > 0 ? money(sum) : col.hint}
                 </p>
               </header>
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+              <div className="flex flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1 lg:min-h-0">
                 {items.map((lead) => (
                   <article
                     key={lead.id}

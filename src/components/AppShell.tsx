@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
@@ -18,19 +19,24 @@ export function AppShell({
   subtitle,
   actions,
   children,
+  fitViewport = false,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  fitViewport?: boolean;
 }) {
-  const { data: me } = useMe();
+  const { data: me, isPending } = useMe();
   const navigate = useNavigate();
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    queryClient.clear();
     navigate({ to: "/auth" });
   };
+
+  const queryClient = useQueryClient();
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,7 +48,7 @@ export function AppShell({
             </span>
             <span className="font-display text-sm font-semibold tracking-tight">Финпланер CRM</span>
           </Link>
-          <nav className="flex flex-wrap items-center gap-1">
+          <nav className={`flex flex-wrap items-center gap-1 transition-opacity ${isPending ? "pointer-events-none opacity-0" : ""}`}>
             {navItems
               .filter((item) => !("adminOnly" in item && item.adminOnly) || me?.isAdmin)
               .map((item) => (
@@ -58,7 +64,7 @@ export function AppShell({
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <div className="text-right leading-tight">
-              <div className="text-sm font-medium">{me?.employee?.name ?? me?.email}</div>
+              <div className="text-sm font-medium">{isPending ? "Проверяем доступ…" : me?.employee?.name ?? me?.email}</div>
               <div className="text-xs text-muted-foreground">
                 {me?.isAdmin ? "Руководитель" : "Менеджер"}
               </div>
@@ -69,15 +75,15 @@ export function AppShell({
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1500px] px-5 py-6">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <main className={`mx-auto max-w-[1500px] px-5 py-6 ${fitViewport ? "lg:flex lg:h-[calc(100dvh-57px)] lg:flex-col lg:overflow-hidden" : ""}`}>
+        <div className={`flex flex-wrap items-end justify-between gap-3 ${fitViewport ? "mb-4 shrink-0" : "mb-6"}`}>
           <div>
             <h1 className="text-2xl font-semibold">{title}</h1>
             {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
           </div>
           {actions}
         </div>
-        {children}
+        <div className={fitViewport ? "min-h-0 flex-1" : ""}>{children}</div>
       </main>
     </div>
   );
