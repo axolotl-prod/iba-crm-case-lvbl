@@ -45,7 +45,23 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const { data: me } = useMe();
   const qc = useQueryClient();
-  const [period, setPeriod] = useState(monthStart());
+  const [periodOverride, setPeriod] = useState<string | null>(null);
+
+  const { data: lastPaymentMonth } = useQuery({
+    queryKey: ["last-payment-month"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("payments")
+        .select("payment_date")
+        .order("payment_date", { ascending: false })
+        .limit(1);
+      const latest = data?.[0]?.payment_date;
+      return latest ? `${latest.slice(0, 7)}-01` : monthStart();
+    },
+  });
+
+  const period = periodOverride ?? lastPaymentMonth ?? monthStart();
+
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -215,6 +231,7 @@ function DashboardPage() {
       <div className="mt-4 panel p-5">
         <h2 className="text-sm font-semibold">План компании на {monthLabel(period)}</h2>
         <PlanForm
+          key={companyPlan?.id ?? `company-${period}`}
           plan={companyPlan}
           onSave={(v) => savePlan.mutate({ employee_id: null, ...v })}
         />
@@ -267,7 +284,11 @@ function DashboardPage() {
                   К выплате: <span className="text-primary">{money(bonus.payout)}</span>
                 </span>
               </div>
-              <PlanForm plan={plan} onSave={(v) => savePlan.mutate({ employee_id: emp.id, ...v })} />
+              <PlanForm
+                key={plan?.id ?? `${emp.id}-${period}`}
+                plan={plan}
+                onSave={(v) => savePlan.mutate({ employee_id: emp.id, ...v })}
+              />
             </div>
           );
         })}
