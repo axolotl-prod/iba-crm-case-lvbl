@@ -17,7 +17,7 @@ export type Employee = {
 export function useMe() {
   return useQuery({
     queryKey: ["me"],
-    staleTime: 60_000,
+    staleTime: 0,
     queryFn: async () => {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return null;

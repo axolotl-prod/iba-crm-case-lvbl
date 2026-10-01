@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +28,7 @@ const TEST_ACCOUNTS = [
 
 function AuthPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState(TEST_ACCOUNTS[0]!.email);
   const [password, setPassword] = useState(TEST_ACCOUNTS[0]!.password);
   const [loading, setLoading] = useState(false);
@@ -40,12 +42,14 @@ function AuthPage() {
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    queryClient.clear();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       toast.error("Не удалось войти", { description: error.message });
       return;
     }
+    await queryClient.invalidateQueries();
     navigate({ to: "/board" });
   };
 
