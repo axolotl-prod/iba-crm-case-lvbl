@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const { data: me } = useMe();
   const qc = useQueryClient();
-  const [period, setPeriod] = useState<string | null>(null);
+  const [periodOverride, setPeriod] = useState<string | null>(null);
 
   const { data: lastPaymentMonth } = useQuery({
     queryKey: ["last-payment-month"],
