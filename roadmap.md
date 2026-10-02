@@ -5,4 +5,4 @@
 - [x] Clear account-specific cache and hide admin navigation until role verification finishes.
 - [x] Default plan and staff calculations to the latest month containing payments.
 - [x] Let employees choose a payment month on their desk and mark months containing payments.
-- [ ] Verify the build and key interactions.
+- [x] Verify the build and key interactions.

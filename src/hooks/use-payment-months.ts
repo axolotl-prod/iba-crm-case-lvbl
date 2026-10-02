@@ -14,7 +14,8 @@ export function usePaymentMonths() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payments")
-        .select("payment_date")
+        .select("payment_date, revenue")
+        .gt("revenue", 0)
         .order("payment_date", { ascending: false });
       if (error) throw error;
       return [...new Set((data ?? []).map((payment) => `${payment.payment_date.slice(0, 7)}-01`))];
