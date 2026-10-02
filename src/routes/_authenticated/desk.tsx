@@ -2,9 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
+import { defaultPaymentMonth, nextMonthStart, usePaymentMonths } from "@/hooks/use-payment-months";
 import { AppShell } from "@/components/AppShell";
-import { calcBonus, money, monthLabel, monthStart, STATUS_LABEL, type LeadStatus } from "@/lib/crm";
+import { MonthSelect } from "@/components/MonthSelect";
+import { calcBonus, money, monthLabel, STATUS_LABEL, type LeadStatus } from "@/lib/crm";
 import { Progress } from "@/components/ui/progress";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/desk")({
   head: () => ({
@@ -20,21 +23,26 @@ export const Route = createFileRoute("/_authenticated/desk")({
 
 function DeskPage() {
   const { data: me } = useMe();
-  const period = monthStart();
+  const { data: paymentMonths = [] } = usePaymentMonths();
+  const [periodOverride, setPeriodOverride] = useState<string | null>(null);
+  const period = periodOverride ?? defaultPaymentMonth(paymentMonths);
+  const nextMonth = nextMonthStart(period);
   const employeeId = me?.employee?.id;
 
   const { data } = useQuery({
     queryKey: ["desk", employeeId, period],
     enabled: !!employeeId,
     queryFn: async () => {
+      if (!employeeId) return { leads: [], payments: [], plan: undefined };
       const [leadsRes, paymentsRes, planRes] = await Promise.all([
-        supabase.from("leads").select("*").eq("manager_id", employeeId!),
+        supabase.from("leads").select("*").eq("manager_id", employeeId),
         supabase
           .from("payments")
           .select("revenue, payment_date, client_name")
-          .eq("manager_id", employeeId!)
-          .gte("payment_date", period),
-        supabase.from("plans").select("*").eq("period", period).eq("employee_id", employeeId!),
+          .eq("manager_id", employeeId)
+          .gte("payment_date", period)
+          .lt("payment_date", nextMonth),
+        supabase.from("plans").select("*").eq("period", period).eq("employee_id", employeeId),
       ]);
       return {
         leads: (leadsRes.data ?? []) as {
@@ -75,6 +83,7 @@ function DeskPage() {
     <AppShell
       title={`Рабочий стол · ${emp?.name ?? ""}`}
       subtitle={`Период: ${monthLabel(period)}`}
+      actions={<MonthSelect value={period} months={paymentMonths} onChange={setPeriodOverride} />}
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="panel p-5 lg:col-span-2">
