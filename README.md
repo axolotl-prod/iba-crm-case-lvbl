@@ -1,24 +1,36 @@
-# IBA CRM Case
+# Финпланер CRM
 
-Implement exactly the screenshot and nothing else
+CRM для отдела продаж: клиенты, сделки, платежи, планы и показатели команды.
 
-This project was built with [Lovable](https://lovable.dev).
+## Локальный запуск
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/5b463402-f69d-463c-a386-d9fad5c50c58).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Требуется Node.js 20.19 или новее.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm install
 npm run dev
 ```
+
+Приложение откроется по адресу `http://localhost:8080`.
+
+## Переменные окружения
+
+Создайте `.env` и задайте параметры подключения к Supabase:
+
+```dotenv
+SUPABASE_URL=
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+DATABASE_URL=
+```
+
+`DATABASE_URL` используется только для запуска миграций через `npm run db:migrate`.
+
+## Команды
+
+- `npm run dev` — локальный сервер разработки;
+- `npm run build` — production-сборка;
+- `npm run preview` — локальный просмотр production-сборки;
+- `npm run db:migrate` — применение миграций Drizzle.
