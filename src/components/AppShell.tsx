@@ -29,14 +29,13 @@ export function AppShell({
 }) {
   const { data: me, isPending } = useMe();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const signOut = async () => {
     await supabase.auth.signOut();
     queryClient.clear();
     navigate({ to: "/auth" });
   };
-
-  const queryClient = useQueryClient();
 
   return (
     <div className="min-h-screen bg-background">

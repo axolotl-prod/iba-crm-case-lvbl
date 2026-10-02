@@ -13,8 +13,10 @@ import {
 } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe } from "@/hooks/use-me";
+import { defaultPaymentMonth, usePaymentMonths } from "@/hooks/use-payment-months";
 import { AppShell } from "@/components/AppShell";
-import { calcBonus, money, monthLabel, monthStart, shortMoney } from "@/lib/crm";
+import { MonthSelect } from "@/components/MonthSelect";
+import { calcBonus, money, monthLabel, shortMoney } from "@/lib/crm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,20 +49,8 @@ function DashboardPage() {
   const qc = useQueryClient();
   const [periodOverride, setPeriod] = useState<string | null>(null);
 
-  const { data: lastPaymentMonth } = useQuery({
-    queryKey: ["last-payment-month"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("payments")
-        .select("payment_date")
-        .order("payment_date", { ascending: false })
-        .limit(1);
-      const latest = data?.[0]?.payment_date;
-      return latest ? `${latest.slice(0, 7)}-01` : monthStart();
-    },
-  });
-
-  const period = periodOverride ?? lastPaymentMonth ?? monthStart();
+  const { data: paymentMonths = [] } = usePaymentMonths();
+  const period = periodOverride ?? defaultPaymentMonth(paymentMonths);
 
 
   const { data: employees = [] } = useQuery({
@@ -169,12 +159,7 @@ function DashboardPage() {
         <div className="flex items-end gap-2">
           <div className="grid gap-1.5">
             <Label className="text-xs text-muted-foreground">Период</Label>
-            <Input
-              type="month"
-              value={period.slice(0, 7)}
-              onChange={(e) => setPeriod(`${e.target.value}-01`)}
-              className="w-40"
-            />
+            <MonthSelect value={period} months={paymentMonths} onChange={setPeriod} />
           </div>
         </div>
       }

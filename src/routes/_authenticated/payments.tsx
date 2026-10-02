@@ -98,6 +98,7 @@ function PaymentsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["payment-months"] });
       setOpen(false);
       toast.success("Оплата добавлена");
     },
