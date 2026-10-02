@@ -29,6 +29,13 @@
       "when": 1790703641837,
       "tag": "0003_seed_leads_from_excel",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790931617698,
+      "tag": "0004_normalized_crm_schema",
+      "breakpoints": true
     }
   ]
 }

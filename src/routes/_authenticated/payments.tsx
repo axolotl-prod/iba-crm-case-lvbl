@@ -1,15 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Link2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useMe } from "@/hooks/use-me";
 import { AppShell } from "@/components/AppShell";
 import { money, monthStart } from "@/lib/crm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -21,29 +21,38 @@ import {
 
 type Payment = {
   id: string;
-  order_no: number | null;
-  client_name: string;
-  contact: string | null;
+  dealId: string | null;
+  clientName: string;
   tariff: string | null;
-  revenue: number;
-  net_profit: number;
-  receivable: number;
-  payment_method: string | null;
-  payment_date: string;
-  schedule: string | null;
-  manager_id: string | null;
-  lead_id: string | null;
+  amount: number;
+  netAmount: number;
+  method: string | null;
+  paidAt: string;
+  note: string | null;
+  employeeId: string | null;
 };
 
-type LeadOption = { id: string; name: string; manager_id: string | null };
+type DealOption = {
+  id: string;
+  name: string;
+  managerId: string | null;
+  amount: number | null;
+};
+
+type PaymentDraft = {
+  dealId: string;
+  amount: number;
+  netAmount: number;
+  method: string;
+  paidAt: string;
+  note: string;
+};
 
 export const Route = createFileRoute("/_authenticated/payments")({
   head: () => ({
     meta: [
       { title: "Оплаты — Финпланер CRM" },
-      { name: "description", content: "Таблица оплат клиентов с выручкой, прибылью и дебиторкой." },
-      { property: "og:title", content: "Оплаты — Финпланер CRM" },
-      { property: "og:description", content: "Таблица оплат клиентов." },
+      { name: "description", content: "Фактически поступившие платежи по сделкам." },
     ],
   }),
   component: PaymentsPage,
@@ -51,7 +60,6 @@ export const Route = createFileRoute("/_authenticated/payments")({
 
 function PaymentsPage() {
   const qc = useQueryClient();
-  const { data: me } = useMe();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Payment | null>(null);
@@ -61,81 +69,120 @@ function PaymentsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payments")
-        .select("*")
-        .order("payment_date", { ascending: false });
+        .select(
+          "id, deal_id, client_name, tariff, amount, net_amount, method, paid_at, note, credited_employee_id",
+        )
+        .not("amount", "is", null)
+        .order("paid_at", { ascending: false });
       if (error) throw error;
-      return data as Payment[];
+      return (data ?? []).map((payment): Payment => ({
+        id: payment.id,
+        dealId: payment.deal_id,
+        clientName: payment.client_name,
+        tariff: payment.tariff,
+        amount: Number(payment.amount ?? 0),
+        netAmount: Number(payment.net_amount ?? 0),
+        method: payment.method,
+        paidAt: payment.paid_at ?? "",
+        note: payment.note,
+        employeeId: payment.credited_employee_id,
+      }));
     },
   });
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees-min"],
     queryFn: async () => {
-      const { data } = await supabase.from("employees").select("id, name");
-      return (data ?? []) as { id: string; name: string }[];
+      const { data, error } = await supabase.from("employees").select("id, name").order("name");
+      if (error) throw error;
+      return data ?? [];
     },
   });
+
+  const { data: deals = [] } = useQuery({
+    queryKey: ["payment-deal-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("deals")
+        .select("id, manager_id, agreed_amount, customer:customers(full_name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((deal) => ({
+        id: deal.id,
+        name: (deal.customer as { full_name: string } | null)?.full_name ?? "Без имени",
+        managerId: deal.manager_id,
+        amount: deal.agreed_amount,
+      })) as DealOption[];
+    },
+  });
+
   const nameById = useMemo(
-    () => Object.fromEntries(employees.map((e) => [e.id, e.name])),
+    () => Object.fromEntries(employees.map((employee) => [employee.id, employee.name])),
     [employees],
   );
 
-  const { data: leads = [] } = useQuery({
-    queryKey: ["payment-lead-options"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("leads").select("id, name, manager_id").order("name");
-      if (error) throw error;
-      return (data ?? []) as LeadOption[];
-    },
-  });
-
   const create = useMutation({
-    mutationFn: async (payload: Partial<Payment>) => {
-      const linkedLead = leads.find((lead) => lead.id === payload.lead_id);
-      const { error } = await supabase
-        .from("payments")
-        .insert({ ...payload, manager_id: linkedLead?.manager_id ?? me?.employee?.id ?? null } as never);
+    mutationFn: async (draft: PaymentDraft) => {
+      const { error } = await supabase.rpc("record_deal_payment", {
+        _deal_id: draft.dealId,
+        _amount: draft.amount,
+        _paid_at: draft.paidAt,
+        _method: draft.method || null,
+        _net_amount: draft.netAmount,
+        _note: draft.note || null,
+        _mark_paid: false,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
       qc.invalidateQueries({ queryKey: ["payment-months"] });
       setOpen(false);
-      toast.success("Оплата добавлена");
+      toast.success("Платёж добавлен");
     },
-    onError: (e: Error) => toast.error("Не удалось добавить оплату", { description: e.message }),
+    onError: (error: Error) =>
+      toast.error("Не удалось добавить платёж", { description: error.message }),
   });
 
   const update = useMutation({
     mutationFn: async (payment: Payment) => {
-      const { id, ...values } = payment;
-      const { error } = await supabase.from("payments").update(values).eq("id", id);
+      const { error } = await supabase
+        .from("payments")
+        .update({
+          amount: payment.amount,
+          net_amount: payment.netAmount,
+          method: payment.method,
+          paid_at: payment.paidAt,
+          note: payment.note,
+        })
+        .eq("id", payment.id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
       qc.invalidateQueries({ queryKey: ["payment-months"] });
       setSelected(null);
-      toast.success("Оплата сохранена");
+      toast.success("Платёж сохранён");
     },
-    onError: (e: Error) => toast.error("Не удалось сохранить оплату", { description: e.message }),
+    onError: (error: Error) =>
+      toast.error("Не удалось сохранить платёж", { description: error.message }),
   });
 
-  const filtered = payments.filter((p) =>
-    (p.client_name + (p.tariff ?? "")).toLowerCase().includes(search.toLowerCase()),
+  const filtered = payments.filter((payment) =>
+    `${payment.clientName} ${payment.tariff ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
-
   const period = monthStart();
-  const inMonth = payments.filter((p) => p.payment_date >= period);
-  const revenue = payments.reduce((a, p) => a + Number(p.revenue), 0);
-  const net = payments.reduce((a, p) => a + Number(p.net_profit), 0);
-  const receivable = payments.reduce((a, p) => a + Number(p.receivable), 0);
-  const monthRevenue = inMonth.reduce((a, p) => a + Number(p.revenue), 0);
+  const inMonth = payments.filter((payment) => payment.paidAt >= period);
+  const revenue = payments.reduce((total, payment) => total + payment.amount, 0);
+  const net = payments.reduce((total, payment) => total + payment.netAmount, 0);
+  const monthRevenue = inMonth.reduce((total, payment) => total + payment.amount, 0);
 
   return (
     <AppShell
       title="Оплаты"
-      subtitle={`${payments.length} оплат · средний чек ${money(payments.length ? revenue / payments.length : 0)}`}
+      subtitle={`${payments.length} платежей · средний чек ${money(payments.length ? revenue / payments.length : 0)}`}
       actions={
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -149,77 +196,62 @@ function PaymentsPage() {
             </DialogHeader>
             <form
               className="grid gap-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
+              onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
                 create.mutate({
-                  client_name: String(f.get("client_name")),
-                  contact: (f.get("contact") as string) || null,
-                  tariff: (f.get("tariff") as string) || null,
-                  revenue: Number(f.get("revenue") || 0),
-                  net_profit: Number(f.get("net_profit") || 0),
-                  receivable: Number(f.get("receivable") || 0),
-                  payment_method: (f.get("payment_method") as string) || null,
-                  payment_date: String(f.get("payment_date")),
-                  schedule: (f.get("schedule") as string) || null,
-                  lead_id: (f.get("lead_id") as string) || null,
+                  dealId: String(form.get("deal_id")),
+                  amount: Number(form.get("amount") || 0),
+                  netAmount: Number(form.get("net_amount") || 0),
+                  method: String(form.get("method") || ""),
+                  paidAt: String(form.get("paid_at")),
+                  note: String(form.get("note") || ""),
                 });
               }}
             >
-              <div className="grid gap-1.5">
-                <Label htmlFor="client_name">Клиент</Label>
-                <Input id="client_name" name="client_name" required />
-              </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="lead_id">Заявка с доски</Label>
-                  <select id="lead_id" name="lead_id" className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                    <option value="">Без привязки</option>
-                    {leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.name}</option>)}
-                  </select>
-                </div>
+              <Field label="Сделка">
+                <select
+                  name="deal_id"
+                  required
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Выберите сделку
+                  </option>
+                  {deals.map((deal) => (
+                    <option key={deal.id} value={deal.id}>
+                      {deal.name}
+                      {deal.amount ? ` · ${money(deal.amount)}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="contact">Контакт</Label>
-                  <Input id="contact" name="contact" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="tariff">Тариф</Label>
-                  <Input id="tariff" name="tariff" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="revenue">Выручка, ₽</Label>
-                  <Input id="revenue" name="revenue" type="number" required />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="net_profit">Чистая прибыль, ₽</Label>
-                  <Input id="net_profit" name="net_profit" type="number" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="receivable">Дебиторка, ₽</Label>
-                  <Input id="receivable" name="receivable" type="number" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="payment_date">Дата оплаты</Label>
+                <Field label="Сумма, ₽">
+                  <Input name="amount" type="number" min="0.01" step="0.01" required />
+                </Field>
+                <Field label="Чистыми, ₽">
+                  <Input name="net_amount" type="number" min="0" step="0.01" defaultValue={0} />
+                </Field>
+                <Field label="Дата">
                   <Input
-                    id="payment_date"
-                    name="payment_date"
+                    name="paid_at"
                     type="date"
-                    defaultValue={new Date().toISOString().slice(0, 10)}
                     required
+                    defaultValue={new Date().toISOString().slice(0, 10)}
                   />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="payment_method">Способ</Label>
-                  <Input id="payment_method" name="payment_method" placeholder="рассрочка" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="schedule">График платежей</Label>
-                  <Input id="schedule" name="schedule" placeholder="6 платежей" />
-                </div>
+                </Field>
+                <Field label="Способ">
+                  <Input name="method" placeholder="Перевод, карта…" />
+                </Field>
               </div>
+              <Field label="Комментарий">
+                <Textarea name="note" rows={2} />
+              </Field>
               <DialogFooter>
                 <Button type="submit" disabled={create.isPending}>
-                  Сохранить
+                  Добавить
                 </Button>
               </DialogFooter>
             </form>
@@ -228,66 +260,51 @@ function PaymentsPage() {
       }
     >
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat title="Выручка всего" value={money(revenue)} />
-        <Stat title="Выручка за месяц" value={money(monthRevenue)} hint={`${inMonth.length} оплат`} />
-        <Stat title="Чистая прибыль" value={money(net)} />
-        <Stat title="Дебиторка" value={money(receivable)} />
+        <Stat title="Выручка за всё время" value={money(revenue)} />
+        <Stat title="Чистыми" value={money(net)} />
+        <Stat title="Выручка в этом месяце" value={money(monthRevenue)} />
+        <Stat title="Количество платежей" value={String(payments.length)} />
       </div>
 
-      <div className="mt-6 panel overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-border p-3">
+      <div className="mt-4 panel overflow-hidden">
+        <div className="border-b border-border p-4">
           <Input
-            placeholder="Поиск по клиенту или тарифу"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Поиск по клиенту или тарифу"
+            className="max-w-sm"
           />
-          <span className="text-xs text-muted-foreground">{filtered.length} записей</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs uppercase text-muted-foreground">
+            <thead className="bg-secondary text-left text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">Клиент</th>
-                <th className="px-3 py-2">Тариф</th>
-                <th className="px-3 py-2">Менеджер</th>
-                <th className="px-3 py-2 text-right">Выручка</th>
-                <th className="px-3 py-2 text-right">Чистыми</th>
-                <th className="px-3 py-2 text-right">Дебиторка</th>
-                <th className="px-3 py-2">Способ</th>
-                <th className="px-3 py-2">Дата</th>
+                <th className="p-3">Дата</th>
+                <th className="p-3">Клиент</th>
+                <th className="p-3">Менеджер</th>
+                <th className="p-3">Способ</th>
+                <th className="p-3 text-right">Сумма</th>
+                <th className="p-3 text-right">Чистыми</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {filtered.map((payment) => (
                 <tr
-                  key={p.id}
-                  tabIndex={0}
-                  onClick={() => setSelected(p)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") setSelected(p);
-                  }}
-                  className="cursor-pointer border-t border-border hover:bg-surface-2 focus:bg-surface-2 focus:outline-none"
+                  key={payment.id}
+                  onClick={() => setSelected(payment)}
+                  className="cursor-pointer border-t border-border hover:bg-secondary/40"
                 >
-                  <td className="px-3 py-2 font-medium">
-                    <span className="flex items-center gap-2">
-                      {p.lead_id ? <Link2 className="size-3 text-primary" aria-label="Связано с заявкой" /> : null}
-                      {p.client_name}
-                    </span>
+                  <td className="p-3">{payment.paidAt}</td>
+                  <td className="p-3">
+                    <div className="font-medium">{payment.clientName}</div>
+                    <div className="text-xs text-muted-foreground">{payment.tariff || "—"}</div>
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{p.tariff ?? "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {p.manager_id ? (nameById[p.manager_id] ?? "—") : "—"}
+                  <td className="p-3">
+                    {payment.employeeId ? (nameById[payment.employeeId] ?? "—") : "—"}
                   </td>
-                  <td className="px-3 py-2 text-right">{money(p.revenue)}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">
-                    {money(p.net_profit)}
-                  </td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">
-                    {p.receivable ? money(p.receivable) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground">{p.payment_method ?? "—"}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{p.payment_date}</td>
+                  <td className="p-3">{payment.method || "—"}</td>
+                  <td className="p-3 text-right font-medium">{money(payment.amount)}</td>
+                  <td className="p-3 text-right">{money(payment.netAmount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -295,68 +312,67 @@ function PaymentsPage() {
         </div>
       </div>
 
-      <Dialog open={!!selected} onOpenChange={(isOpen) => !isOpen && setSelected(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <Dialog open={!!selected} onOpenChange={(dialogOpen) => !dialogOpen && setSelected(null)}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Карточка оплаты</DialogTitle>
+            <DialogTitle>Платёж · {selected?.clientName}</DialogTitle>
           </DialogHeader>
           {selected ? (
             <form
-              className="grid gap-4"
+              className="grid gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 update.mutate(selected);
               }}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <PaymentField label="Клиент">
-                  <Input value={selected.client_name} onChange={(e) => setSelected({ ...selected, client_name: e.target.value })} required />
-                </PaymentField>
-                <PaymentField label="Контакт">
-                  <Input value={selected.contact ?? ""} onChange={(e) => setSelected({ ...selected, contact: e.target.value || null })} />
-                </PaymentField>
-                <PaymentField label="Заявка с доски">
-                  <select
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                    value={selected.lead_id ?? ""}
-                    onChange={(e) => {
-                      const leadId = e.target.value || null;
-                      const lead = leads.find((item) => item.id === leadId);
-                      setSelected({
-                        ...selected,
-                        lead_id: leadId,
-                        manager_id: lead?.manager_id ?? selected.manager_id,
-                      });
-                    }}
-                  >
-                    <option value="">Без привязки</option>
-                    {leads.map((lead) => <option key={lead.id} value={lead.id}>{lead.name}</option>)}
-                  </select>
-                </PaymentField>
-                <PaymentField label="Тариф">
-                  <Input value={selected.tariff ?? ""} onChange={(e) => setSelected({ ...selected, tariff: e.target.value || null })} />
-                </PaymentField>
-                <PaymentField label="Выручка, ₽">
-                  <Input type="number" value={selected.revenue} onChange={(e) => setSelected({ ...selected, revenue: Number(e.target.value) })} />
-                </PaymentField>
-                <PaymentField label="Чистая прибыль, ₽">
-                  <Input type="number" value={selected.net_profit} onChange={(e) => setSelected({ ...selected, net_profit: Number(e.target.value) })} />
-                </PaymentField>
-                <PaymentField label="Дебиторка, ₽">
-                  <Input type="number" value={selected.receivable} onChange={(e) => setSelected({ ...selected, receivable: Number(e.target.value) })} />
-                </PaymentField>
-                <PaymentField label="Дата оплаты">
-                  <Input type="date" value={selected.payment_date} onChange={(e) => setSelected({ ...selected, payment_date: e.target.value })} />
-                </PaymentField>
-                <PaymentField label="Способ оплаты">
-                  <Input value={selected.payment_method ?? ""} onChange={(e) => setSelected({ ...selected, payment_method: e.target.value || null })} />
-                </PaymentField>
-                <PaymentField label="График платежей">
-                  <Input value={selected.schedule ?? ""} onChange={(e) => setSelected({ ...selected, schedule: e.target.value || null })} />
-                </PaymentField>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Сумма, ₽">
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={selected.amount}
+                    onChange={(event) =>
+                      setSelected({ ...selected, amount: Number(event.target.value) })
+                    }
+                  />
+                </Field>
+                <Field label="Чистыми, ₽">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={selected.netAmount}
+                    onChange={(event) =>
+                      setSelected({ ...selected, netAmount: Number(event.target.value) })
+                    }
+                  />
+                </Field>
+                <Field label="Дата">
+                  <Input
+                    type="date"
+                    value={selected.paidAt}
+                    onChange={(event) => setSelected({ ...selected, paidAt: event.target.value })}
+                  />
+                </Field>
+                <Field label="Способ">
+                  <Input
+                    value={selected.method ?? ""}
+                    onChange={(event) => setSelected({ ...selected, method: event.target.value })}
+                  />
+                </Field>
               </div>
+              <Field label="Комментарий">
+                <Textarea
+                  rows={2}
+                  value={selected.note ?? ""}
+                  onChange={(event) => setSelected({ ...selected, note: event.target.value })}
+                />
+              </Field>
               <DialogFooter>
-                <Button type="submit" disabled={update.isPending}>Сохранить</Button>
+                <Button type="submit" disabled={update.isPending}>
+                  Сохранить
+                </Button>
               </DialogFooter>
             </form>
           ) : null}
@@ -366,7 +382,7 @@ function PaymentsPage() {
   );
 }
 
-function PaymentField({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
@@ -375,12 +391,11 @@ function PaymentField({ label, children }: { label: string; children: React.Reac
   );
 }
 
-function Stat({ title, value, hint }: { title: string; value: string; hint?: string }) {
+function Stat({ title, value }: { title: string; value: string }) {
   return (
     <div className="panel p-4">
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{title}</div>
       <div className="stat-value mt-1">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
     </div>
   );
 }

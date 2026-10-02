@@ -36,7 +36,10 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
       { title: "Планы и премии — Финпланер CRM" },
-      { name: "description", content: "Сводный дашборд руководителя: выполнение планов и премии команды." },
+      {
+        name: "description",
+        content: "Сводный дашборд руководителя: выполнение планов и премии команды.",
+      },
       { property: "og:title", content: "Планы и премии — Финпланер CRM" },
       { property: "og:description", content: "Сводный дашборд руководителя." },
     ],
@@ -52,7 +55,6 @@ function DashboardPage() {
   const { data: paymentMonths = [] } = usePaymentMonths();
   const period = periodOverride ?? defaultPaymentMonth(paymentMonths);
 
-
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
     queryFn: async () => {
@@ -65,8 +67,22 @@ function DashboardPage() {
   const { data: plans = [] } = useQuery({
     queryKey: ["plans", period],
     queryFn: async () => {
-      const { data } = await supabase.from("plans").select("*").eq("period", period);
+      const { data } = await supabase.from("sales_plans").select("*").eq("period", period);
       return (data ?? []) as Plan[];
+    },
+  });
+
+  const { data: compensationTerms = [] } = useQuery({
+    queryKey: ["compensation-terms", period],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("compensation_terms")
+        .select("employee_id, salary, bonus_rate, coef_min, coef_target, valid_from")
+        .lte("valid_from", period)
+        .or(`valid_to.is.null,valid_to.gte.${period}`)
+        .order("valid_from", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
@@ -81,10 +97,16 @@ function DashboardPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("payments")
-        .select("revenue, net_profit, payment_date, manager_id")
-        .gte("payment_date", period)
-        .lt("payment_date", nextMonth);
-      return (data ?? []) as {
+        .select("amount, net_amount, paid_at, credited_employee_id")
+        .not("amount", "is", null)
+        .gte("paid_at", period)
+        .lt("paid_at", nextMonth);
+      return (data ?? []).map((payment) => ({
+        revenue: Number(payment.amount ?? 0),
+        net_profit: Number(payment.net_amount ?? 0),
+        payment_date: payment.paid_at ?? period,
+        manager_id: payment.credited_employee_id,
+      })) as {
         revenue: number;
         net_profit: number;
         payment_date: string;
@@ -103,12 +125,12 @@ function DashboardPage() {
       const existing = plans.find((x) => x.employee_id === p.employee_id);
       if (existing) {
         const { error } = await supabase
-          .from("plans")
+          .from("sales_plans")
           .update({ plan_min: p.plan_min, plan_target: p.plan_target, plan_max: p.plan_max })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("plans").insert({ ...p, period } as never);
+        const { error } = await supabase.from("sales_plans").insert({ ...p, period } as never);
         if (error) throw error;
       }
     },
@@ -120,7 +142,11 @@ function DashboardPage() {
   });
 
   if (isMePending) {
-    return <AppShell title="Планы"><div className="panel h-32 animate-pulse" /></AppShell>;
+    return (
+      <AppShell title="Планы">
+        <div className="panel h-32 animate-pulse" />
+      </AppShell>
+    );
   }
 
   if (!me?.isAdmin) {
@@ -141,7 +167,7 @@ function DashboardPage() {
     ? Math.min(100, (totalRevenue / Number(companyPlan.plan_target)) * 100)
     : 0;
 
-  const chartData = useMemo(() => {
+  const chartData = (() => {
     const byDay = new Map<string, number>();
     for (const p of payments) {
       byDay.set(p.payment_date, (byDay.get(p.payment_date) ?? 0) + Number(p.revenue));
@@ -153,7 +179,7 @@ function DashboardPage() {
         cumulative += value;
         return { date: date.slice(8), day: value, total: cumulative };
       });
-  }, [payments]);
+  })();
 
   return (
     <AppShell
@@ -229,16 +255,17 @@ function DashboardPage() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         {employees.map((emp) => {
+          const terms = compensationTerms.find((item) => item.employee_id === emp.id);
           const plan = plans.find((p) => p.employee_id === emp.id);
           const revenue = payments
             .filter((p) => p.manager_id === emp.id)
             .reduce((a, p) => a + Number(p.revenue), 0);
           const bonus = calcBonus({
             revenue,
-            salary: Number(emp.salary),
-            bonusRate: Number(emp.bonus_rate),
-            coefMin: Number(emp.coef_min),
-            coefTarget: Number(emp.coef_target),
+            salary: Number(terms?.salary ?? emp.salary),
+            bonusRate: Number(terms?.bonus_rate ?? emp.bonus_rate),
+            coefMin: Number(terms?.coef_min ?? emp.coef_min),
+            coefTarget: Number(terms?.coef_target ?? emp.coef_target),
             planMin: Number(plan?.plan_min ?? 0),
             planTarget: Number(plan?.plan_target ?? 0),
           });
@@ -249,7 +276,8 @@ function DashboardPage() {
                   <h3 className="text-base font-semibold">{emp.name}</h3>
                   <p className="text-xs text-muted-foreground">
                     {emp.role === "admin" ? "Руководитель" : "Менеджер"} · оклад{" "}
-                    {money(emp.salary)} · ставка {emp.bonus_rate}%
+                    {money(terms?.salary ?? emp.salary)} · ставка{" "}
+                    {terms?.bonus_rate ?? emp.bonus_rate}%
                   </p>
                 </div>
                 <div className="text-right">

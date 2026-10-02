@@ -13,7 +13,10 @@ export const Route = createFileRoute("/_authenticated/desk")({
   head: () => ({
     meta: [
       { title: "Рабочий стол — Финпланер CRM" },
-      { name: "description", content: "Личный план менеджера: заявки на сегодня, премия и коэффициенты." },
+      {
+        name: "description",
+        content: "Личный план менеджера: заявки на сегодня, премия и коэффициенты.",
+      },
       { property: "og:title", content: "Рабочий стол — Финпланер CRM" },
       { property: "og:description", content: "Личный план менеджера и премия." },
     ],
@@ -33,50 +36,90 @@ function DeskPage() {
     queryKey: ["desk", employeeId, period],
     enabled: !!employeeId,
     queryFn: async () => {
-      if (!employeeId) return { leads: [], payments: [], plan: undefined };
-      const [leadsRes, paymentsRes, planRes] = await Promise.all([
-        supabase.from("leads").select("*").eq("manager_id", employeeId),
+      if (!employeeId) return { leads: [], payments: [], plan: undefined, terms: undefined };
+      const [dealsRes, activitiesRes, paymentsRes, planRes, termsRes] = await Promise.all([
+        supabase
+          .from("deals")
+          .select("id, status, lead_date, agreed_amount, customer:customers(full_name)")
+          .eq("manager_id", employeeId),
+        supabase
+          .from("activities")
+          .select("deal_id, subject, note, due_at")
+          .eq("assignee_id", employeeId)
+          .is("completed_at", null)
+          .order("due_at", { ascending: true, nullsFirst: false }),
         supabase
           .from("payments")
-          .select("revenue, payment_date, client_name")
-          .eq("manager_id", employeeId)
-          .gte("payment_date", period)
-          .lt("payment_date", nextMonth),
-        supabase.from("plans").select("*").eq("period", period).eq("employee_id", employeeId),
+          .select("amount, paid_at, client_name")
+          .eq("credited_employee_id", employeeId)
+          .not("amount", "is", null)
+          .gte("paid_at", period)
+          .lt("paid_at", nextMonth),
+        supabase.from("sales_plans").select("*").eq("period", period).eq("employee_id", employeeId),
+        supabase
+          .from("compensation_terms")
+          .select("salary, bonus_rate, coef_min, coef_target")
+          .eq("employee_id", employeeId)
+          .lte("valid_from", period)
+          .or(`valid_to.is.null,valid_to.gte.${period}`)
+          .order("valid_from", { ascending: false })
+          .limit(1),
       ]);
+      const nextActionByDeal = new Map<string, string>();
+      for (const activity of activitiesRes.data ?? []) {
+        if (!nextActionByDeal.has(activity.deal_id)) {
+          nextActionByDeal.set(activity.deal_id, activity.note || activity.subject);
+        }
+      }
       return {
-        leads: (leadsRes.data ?? []) as {
-          id: string;
-          name: string;
-          status: LeadStatus;
-          next_action: string | null;
-          lead_date: string | null;
-          amount: number | null;
-        }[],
-        payments: (paymentsRes.data ?? []) as {
+        leads: (dealsRes.data ?? []).map((deal) => ({
+          id: deal.id,
+          name: (deal.customer as { full_name: string } | null)?.full_name ?? "Без имени",
+          status: deal.status as LeadStatus,
+          next_action: nextActionByDeal.get(deal.id) ?? null,
+          lead_date: deal.lead_date,
+          amount: deal.agreed_amount,
+        })),
+        payments: (paymentsRes.data ?? []).map((payment) => ({
+          revenue: Number(payment.amount ?? 0),
+          payment_date: payment.paid_at ?? period,
+          client_name: payment.client_name,
+        })) as {
           revenue: number;
           payment_date: string;
           client_name: string;
         }[],
-        plan: planRes.data?.[0] as { plan_min: number; plan_target: number; plan_max: number } | undefined,
+        plan: planRes.data?.[0] as
+          { plan_min: number; plan_target: number; plan_max: number } | undefined,
+        terms: termsRes.data?.[0] as
+          | {
+              salary: number;
+              bonus_rate: number;
+              coef_min: number;
+              coef_target: number;
+            }
+          | undefined,
       };
     },
   });
 
   const emp = me?.employee;
+  const terms = data?.terms;
   const revenue = (data?.payments ?? []).reduce((a, p) => a + Number(p.revenue), 0);
   const bonus = calcBonus({
     revenue,
-    salary: Number(emp?.salary ?? 0),
-    bonusRate: Number(emp?.bonus_rate ?? 0),
-    coefMin: Number(emp?.coef_min ?? 1),
-    coefTarget: Number(emp?.coef_target ?? 1),
+    salary: Number(terms?.salary ?? emp?.salary ?? 0),
+    bonusRate: Number(terms?.bonus_rate ?? emp?.bonus_rate ?? 0),
+    coefMin: Number(terms?.coef_min ?? emp?.coef_min ?? 1),
+    coefTarget: Number(terms?.coef_target ?? emp?.coef_target ?? 1),
     planMin: Number(data?.plan?.plan_min ?? 0),
     planTarget: Number(data?.plan?.plan_target ?? 0),
   });
 
   const today = new Date().toISOString().slice(0, 10);
-  const open = (data?.leads ?? []).filter((l) => ["new", "in_work", "kp_sent"].includes(l.status));
+  const open = (data?.leads ?? []).filter((l) =>
+    ["new", "in_work", "offer_sent", "awaiting_payment"].includes(l.status),
+  );
   const todayLeads = open.filter((l) => l.lead_date === today);
 
   return (
@@ -120,8 +163,11 @@ function DeskPage() {
         <div className="panel p-5">
           <div className="text-xs uppercase text-muted-foreground">Расчёт на сейчас</div>
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Оклад" value={money(emp?.salary ?? 0)} />
-            <Row label={`Премия ${emp?.bonus_rate ?? 0}%`} value={money(bonus.baseBonus)} />
+            <Row label="Оклад" value={money(terms?.salary ?? emp?.salary ?? 0)} />
+            <Row
+              label={`Премия ${terms?.bonus_rate ?? emp?.bonus_rate ?? 0}%`}
+              value={money(bonus.baseBonus)}
+            />
             <Row label={`Коэффициент (${bonus.coefLabel})`} value={`×${bonus.coef}`} />
             <Row label="Премия к начислению" value={money(bonus.bonus)} />
             <div className="border-t border-border pt-2">

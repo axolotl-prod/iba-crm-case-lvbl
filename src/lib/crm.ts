@@ -1,9 +1,10 @@
-export type LeadStatus = "new" | "in_work" | "kp_sent" | "paid" | "lost";
+export type LeadStatus = "new" | "in_work" | "offer_sent" | "awaiting_payment" | "paid" | "lost";
 
 export const STATUS_COLUMNS: { key: LeadStatus; title: string; hint: string }[] = [
   { key: "new", title: "Новая заявка", hint: "Только что поступила" },
   { key: "in_work", title: "В работе", hint: "Идут переговоры" },
-  { key: "kp_sent", title: "КП отправлено", hint: "Ждём решения" },
+  { key: "offer_sent", title: "КП отправлено", hint: "Ждём решения" },
+  { key: "awaiting_payment", title: "Ожидает оплаты", hint: "Счёт выставлен" },
   { key: "paid", title: "Оплата", hint: "Успешная сделка" },
   { key: "lost", title: "Отказ", hint: "Закрыта без оплаты" },
 ];
@@ -11,7 +12,8 @@ export const STATUS_COLUMNS: { key: LeadStatus; title: string; hint: string }[] 
 export const STATUS_LABEL: Record<LeadStatus, string> = {
   new: "Новая заявка",
   in_work: "В работе",
-  kp_sent: "КП отправлено",
+  offer_sent: "КП отправлено",
+  awaiting_payment: "Ожидает оплаты",
   paid: "Оплата",
   lost: "Отказ",
 };

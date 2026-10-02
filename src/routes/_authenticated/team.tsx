@@ -24,7 +24,10 @@ export const Route = createFileRoute("/_authenticated/team")({
   head: () => ({
     meta: [
       { title: "Сотрудники — Финпланер CRM" },
-      { name: "description", content: "Оклады, ставки премий и повышающие коэффициенты команды продаж." },
+      {
+        name: "description",
+        content: "Оклады, ставки премий и повышающие коэффициенты команды продаж.",
+      },
       { property: "og:title", content: "Сотрудники — Финпланер CRM" },
       { property: "og:description", content: "Оклады, премии и коэффициенты команды." },
     ],
@@ -54,27 +57,61 @@ function TeamPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from("payments")
-        .select("revenue, manager_id")
-        .gte("payment_date", period)
-        .lt("payment_date", nextMonth);
-      return (data ?? []) as { revenue: number; manager_id: string | null }[];
+        .select("amount, credited_employee_id")
+        .not("amount", "is", null)
+        .gte("paid_at", period)
+        .lt("paid_at", nextMonth);
+      return (data ?? []).map((payment) => ({
+        revenue: Number(payment.amount ?? 0),
+        manager_id: payment.credited_employee_id,
+      })) as { revenue: number; manager_id: string | null }[];
     },
   });
 
   const { data: plans = [] } = useQuery({
     queryKey: ["plans", period],
     queryFn: async () => {
-      const { data } = await supabase.from("plans").select("*").eq("period", period);
-      return (data ?? []) as { employee_id: string | null; plan_min: number; plan_target: number }[];
+      const { data } = await supabase.from("sales_plans").select("*").eq("period", period);
+      return (data ?? []) as {
+        employee_id: string | null;
+        plan_min: number;
+        plan_target: number;
+      }[];
+    },
+  });
+
+  const { data: compensationTerms = [] } = useQuery({
+    queryKey: ["compensation-terms", period],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("compensation_terms")
+        .select("employee_id, salary, bonus_rate, coef_min, coef_target, valid_from")
+        .lte("valid_from", period)
+        .or(`valid_to.is.null,valid_to.gte.${period}`)
+        .order("valid_from", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
     },
   });
 
   const upsert = useMutation({
     mutationFn: async (emp: Partial<Employee> & { id?: string }) => {
       if (emp.id) {
-        const { id, ...rest } = emp;
-        const { error } = await supabase.from("employees").update(rest).eq("id", id);
-        if (error) throw error;
+        const { id, salary, bonus_rate, coef_min, coef_target, ...profile } = emp;
+        const { error: profileError } = await supabase
+          .from("employees")
+          .update(profile)
+          .eq("id", id);
+        if (profileError) throw profileError;
+        const { error: termsError } = await supabase.rpc("set_employee_compensation", {
+          _employee_id: id,
+          _valid_from: period,
+          _salary: Number(salary ?? 0),
+          _bonus_rate: Number(bonus_rate ?? 0),
+          _coef_min: Number(coef_min ?? 1),
+          _coef_target: Number(coef_target ?? 1),
+        });
+        if (termsError) throw termsError;
       } else {
         const { error } = await supabase.from("employees").insert(emp as never);
         if (error) throw error;
@@ -89,7 +126,11 @@ function TeamPage() {
   });
 
   if (isMePending) {
-    return <AppShell title="Сотрудники"><div className="panel h-32 animate-pulse" /></AppShell>;
+    return (
+      <AppShell title="Сотрудники">
+        <div className="panel h-32 animate-pulse" />
+      </AppShell>
+    );
   }
 
   if (!me?.isAdmin) {
@@ -160,11 +201,23 @@ function TeamPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="bonus_rate">Базовая ставка премии, %</Label>
-                  <Input id="bonus_rate" name="bonus_rate" type="number" step="0.1" defaultValue={5} />
+                  <Input
+                    id="bonus_rate"
+                    name="bonus_rate"
+                    type="number"
+                    step="0.1"
+                    defaultValue={5}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="coef_min">Коэф. при плане-минимум</Label>
-                  <Input id="coef_min" name="coef_min" type="number" step="0.05" defaultValue={1.2} />
+                  <Input
+                    id="coef_min"
+                    name="coef_min"
+                    type="number"
+                    step="0.05"
+                    defaultValue={1.2}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="coef_target">Коэф. при целевом плане</Label>
@@ -193,16 +246,17 @@ function TeamPage() {
       </p>
       <div className="grid gap-4 xl:grid-cols-2">
         {employees.map((emp) => {
+          const terms = compensationTerms.find((item) => item.employee_id === emp.id);
           const plan = plans.find((p) => p.employee_id === emp.id);
           const revenue = payments
             .filter((p) => p.manager_id === emp.id)
             .reduce((a, p) => a + Number(p.revenue), 0);
           const bonus = calcBonus({
             revenue,
-            salary: Number(emp.salary),
-            bonusRate: Number(emp.bonus_rate),
-            coefMin: Number(emp.coef_min),
-            coefTarget: Number(emp.coef_target),
+            salary: Number(terms?.salary ?? emp.salary),
+            bonusRate: Number(terms?.bonus_rate ?? emp.bonus_rate),
+            coefMin: Number(terms?.coef_min ?? emp.coef_min),
+            coefTarget: Number(terms?.coef_target ?? emp.coef_target),
             planMin: Number(plan?.plan_min ?? 0),
             planTarget: Number(plan?.plan_target ?? 0),
           });
@@ -224,7 +278,11 @@ function TeamPage() {
                 }}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <Input name="name" defaultValue={emp.name} className="max-w-[220px] font-medium" />
+                  <Input
+                    name="name"
+                    defaultValue={emp.name}
+                    className="max-w-[220px] font-medium"
+                  />
                   <span className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground">
                     {emp.role === "admin" ? "Руководитель" : "Менеджер"}
                   </span>
@@ -232,15 +290,25 @@ function TeamPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Оклад, ₽</Label>
-                    <Input name="salary" type="number" defaultValue={emp.salary} />
+                    <Input name="salary" type="number" defaultValue={terms?.salary ?? emp.salary} />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Ставка премии, %</Label>
-                    <Input name="bonus_rate" type="number" step="0.1" defaultValue={emp.bonus_rate} />
+                    <Input
+                      name="bonus_rate"
+                      type="number"
+                      step="0.1"
+                      defaultValue={terms?.bonus_rate ?? emp.bonus_rate}
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Коэф. минимум</Label>
-                    <Input name="coef_min" type="number" step="0.05" defaultValue={emp.coef_min} />
+                    <Input
+                      name="coef_min"
+                      type="number"
+                      step="0.05"
+                      defaultValue={terms?.coef_min ?? emp.coef_min}
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label className="text-xs text-muted-foreground">Коэф. цель</Label>
@@ -248,7 +316,7 @@ function TeamPage() {
                       name="coef_target"
                       type="number"
                       step="0.05"
-                      defaultValue={emp.coef_target}
+                      defaultValue={terms?.coef_target ?? emp.coef_target}
                     />
                   </div>
                 </div>

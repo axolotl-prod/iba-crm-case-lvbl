@@ -14,11 +14,18 @@ export function usePaymentMonths() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("payments")
-        .select("payment_date, revenue")
-        .gt("revenue", 0)
-        .order("payment_date", { ascending: false });
+        .select("paid_at, amount")
+        .gt("amount", 0)
+        .not("paid_at", "is", null)
+        .order("paid_at", { ascending: false });
       if (error) throw error;
-      return [...new Set((data ?? []).map((payment) => `${payment.payment_date.slice(0, 7)}-01`))];
+      return [
+        ...new Set(
+          (data ?? [])
+            .filter((payment) => payment.paid_at)
+            .map((payment) => `${payment.paid_at!.slice(0, 7)}-01`),
+        ),
+      ];
     },
     placeholderData: [],
   });
