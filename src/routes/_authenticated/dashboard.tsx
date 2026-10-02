@@ -45,7 +45,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 function DashboardPage() {
-  const { data: me } = useMe();
+  const { data: me, isPending: isMePending } = useMe();
   const qc = useQueryClient();
   const [periodOverride, setPeriod] = useState<string | null>(null);
 
@@ -119,7 +119,11 @@ function DashboardPage() {
     onError: (e: Error) => toast.error("Не удалось сохранить план", { description: e.message }),
   });
 
-  if (me && !me.isAdmin) {
+  if (isMePending) {
+    return <AppShell title="Планы"><div className="panel h-32 animate-pulse" /></AppShell>;
+  }
+
+  if (!me?.isAdmin) {
     return (
       <AppShell title="Планы" subtitle="Раздел доступен только руководителю">
         <div className="panel p-6 text-sm text-muted-foreground">

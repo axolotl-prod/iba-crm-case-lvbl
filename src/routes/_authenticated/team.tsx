@@ -5,8 +5,9 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useMe, type Employee } from "@/hooks/use-me";
+import { defaultPaymentMonth, nextMonthStart, usePaymentMonths } from "@/hooks/use-payment-months";
 import { AppShell } from "@/components/AppShell";
-import { calcBonus, money, monthStart } from "@/lib/crm";
+import { calcBonus, money } from "@/lib/crm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,10 +33,12 @@ export const Route = createFileRoute("/_authenticated/team")({
 });
 
 function TeamPage() {
-  const { data: me } = useMe();
+  const { data: me, isPending: isMePending } = useMe();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const period = monthStart();
+  const { data: paymentMonths = [] } = usePaymentMonths();
+  const period = defaultPaymentMonth(paymentMonths);
+  const nextMonth = nextMonthStart(period);
 
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -52,7 +55,8 @@ function TeamPage() {
       const { data } = await supabase
         .from("payments")
         .select("revenue, manager_id")
-        .gte("payment_date", period);
+        .gte("payment_date", period)
+        .lt("payment_date", nextMonth);
       return (data ?? []) as { revenue: number; manager_id: string | null }[];
     },
   });
@@ -84,7 +88,11 @@ function TeamPage() {
     onError: (e: Error) => toast.error("Не удалось сохранить", { description: e.message }),
   });
 
-  if (me && !me.isAdmin) {
+  if (isMePending) {
+    return <AppShell title="Сотрудники"><div className="panel h-32 animate-pulse" /></AppShell>;
+  }
+
+  if (!me?.isAdmin) {
     return (
       <AppShell title="Сотрудники" subtitle="Раздел доступен только руководителю">
         <div className="panel p-6 text-sm text-muted-foreground">
