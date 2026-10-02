@@ -91,9 +91,10 @@ function PaymentsPage() {
 
   const create = useMutation({
     mutationFn: async (payload: Partial<Payment>) => {
+      const linkedLead = leads.find((lead) => lead.id === payload.lead_id);
       const { error } = await supabase
         .from("payments")
-        .insert({ ...payload, manager_id: me?.employee?.id ?? null } as never);
+        .insert({ ...payload, manager_id: linkedLead?.manager_id ?? me?.employee?.id ?? null } as never);
       if (error) throw error;
     },
     onSuccess: () => {
