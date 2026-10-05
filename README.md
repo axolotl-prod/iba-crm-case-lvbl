@@ -22,3 +22,33 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Environment variables
+
+Copy `.env.example` to a local `.env` file before starting the application:
+
+```sh
+cp .env.example .env
+```
+
+In PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The application requires these public Supabase connection values:
+
+```dotenv
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+```
+
+- Server-side application code uses `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+- Variables prefixed with `VITE_` are included in the client bundle and must never contain secrets.
+- `SUPABASE_SERVICE_ROLE_KEY` is needed only for trusted server-side administrative operations. Never expose it through a `VITE_` variable.
+- `DATABASE_URL` is needed only when applying database migrations.
+
+The local `.env` file is ignored by Git. Only the placeholder-only `.env.example` template belongs in the repository.
