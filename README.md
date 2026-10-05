@@ -15,18 +15,33 @@ npm run dev
 
 ## Переменные окружения
 
-Создайте `.env` и задайте параметры подключения к Supabase:
+Скопируйте `.env.example` в локальный файл `.env` и заполните значения:
 
-```dotenv
-SUPABASE_URL=
-SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-VITE_SUPABASE_URL=
-VITE_SUPABASE_PUBLISHABLE_KEY=
-DATABASE_URL=
+```sh
+cp .env.example .env
 ```
 
-`DATABASE_URL` используется только для запуска миграций через `npm run db:migrate`.
+В PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Для запуска приложения нужны четыре публичные переменные подключения к Supabase:
+
+```dotenv
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
+```
+
+- `SUPABASE_URL` и `SUPABASE_PUBLISHABLE_KEY` используются серверной частью приложения.
+- Переменные с префиксом `VITE_` попадают в клиентскую сборку и поэтому не должны содержать секреты.
+- `SUPABASE_SERVICE_ROLE_KEY` нужен только для доверенных серверных административных операций. Его нельзя передавать в браузер или называть с префиксом `VITE_`.
+- `DATABASE_URL` нужен только для применения миграций через `npm run db:migrate`.
+
+Файл `.env` исключён из Git. В репозиторий добавляется только безопасный шаблон `.env.example` без настоящих ключей.
 
 ## Команды
 
